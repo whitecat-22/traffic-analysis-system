@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pandas
+numpy
+plotly
+geopandas
+shapely
+requests
+python-multipart
+httpx
+aiofiles
