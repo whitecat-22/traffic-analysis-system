@@ -12,7 +12,7 @@ import {
   CheckCircle2, Route as RouteIcon
 } from 'lucide-react';
 
-import { TEXTS, Lang, Translation } from './i18n';
+import { TEXTS, type Lang, type Translation } from './i18n';
 
 // --- Types ---
 interface LegendItem { speed: number; color: string; }
@@ -244,8 +244,76 @@ export default function App() {
   const [viewState, setViewState] = useState({ longitude: 139.767, latitude: 35.681, zoom: 10 });
   const [mapPoints, setMapPoints] = useState<[number, number][]>([]);
   const [baseMap, setBaseMap] = useState<'osm' | 'gsi'>('osm');
+  const [mapStyleData, setMapStyleData] = useState<any>(null);
   const [searchText, setSearchText] = useState("");
   const [isMatching, setIsMatching] = useState(false); // マッチング中フラグ
+
+  const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY;
+
+  // --- Style Processing Helpers ---
+  const hexToGray = (hex: string) => {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    // 輝度計算 (Y = 0.299R + 0.587G + 0.114B)
+    const y = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+    const grayHex = y.toString(16).padStart(2, '0');
+    return `#${grayHex}${grayHex}${grayHex}`;
+  };
+
+  const convertToGrayscale = (styleJson: any) => {
+    let styleStr = JSON.stringify(styleJson);
+    // #RRGGBB 形式の色コードを検索して置換
+    styleStr = styleStr.replace(/"#(?:[0-9a-fA-F]{3}){1,2}"/g, (match) => {
+      const hex = match.replace(/"/g, '');
+      if (hex.length === 4) { // #RGB -> #RRGGBB
+        const r = hex[1]; const g = hex[2]; const b = hex[3];
+        return `"${hexToGray(`#${r}${r}${g}${g}${b}${b}`)}"`;
+      }
+      if (hex.length === 7) {
+        return `"${hexToGray(hex)}"`;
+      }
+      return match;
+    });
+    return JSON.parse(styleStr);
+  };
+
+  useEffect(() => {
+    const loadStyle = async () => {
+      let url = '';
+      let needsGrayscale = false;
+
+      if (baseMap === 'osm') {
+        if (!MAPTILER_KEY) {
+          console.warn("MapTiler Key is missing.");
+          return;
+        }
+        // MIERUNE Gray (MapTiler JP)
+        // ※アカウントによっては利用できない場合があります。その場合は 'dataviz-light' 等に変更してください。
+        url = `https://api.maptiler.com/maps/jp-mierune-gray/style.json?key=${MAPTILER_KEY}`;
+      } else if (baseMap === 'gsi') {
+        url = 'https://gsi-cyberjapan.github.io/gsivectortile-mapbox-gl-js/pale.json';
+        needsGrayscale = true;
+      }
+
+      try {
+        const res = await axios.get(url);
+        if (needsGrayscale) {
+          setMapStyleData(convertToGrayscale(res.data));
+        } else {
+          setMapStyleData(res.data);
+        }
+      } catch (e) {
+        console.error("Failed to load map style", e);
+        // フォールバック: MIERUNE Grayが403等の場合、Basicを試すなどの処理が考えられます
+        if (baseMap === 'osm') {
+             alert("MIERUNE Grayの読み込みに失敗しました。APIキーまたはプランを確認してください。");
+        }
+      }
+    };
+    loadStyle();
+  }, [baseMap, MAPTILER_KEY]);
+
 
   // 地図クリック: 地点を追加するだけ（経路計算はしない）
   const handleMapClick = (e: any) => {
@@ -362,8 +430,11 @@ export default function App() {
             <div className="w-full h-full relative">
               <div className="absolute top-4 right-4 z-10 flex gap-2">
                 <div className="bg-white/95 backdrop-blur shadow-md border border-gray-200 p-1 rounded-lg flex text-xs">
-                  <button onClick={() => setBaseMap('osm')} className={`px-3 py-1.5 rounded-md font-medium transition-colors ${baseMap==='osm'?'bg-blue-600 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}>OSM</button>
-                  <button onClick={() => setBaseMap('gsi')} className={`px-3 py-1.5 rounded-md font-medium transition-colors ${baseMap==='gsi'?'bg-blue-600 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}>GSI</button>
+                  <button onClick={() => {
+                    if (!MAPTILER_KEY) alert("MapTiler API Key is missing in .env");
+                    setBaseMap('osm');
+                  }} className={`px-3 py-1.5 rounded-md font-medium transition-colors ${baseMap==='osm'?'bg-blue-600 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}>OSM</button>
+                  <button onClick={() => setBaseMap('gsi')} className={`px-3 py-1.5 rounded-md font-medium transition-colors ${baseMap==='gsi'?'bg-blue-600 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}>地理院地図</button>
                 </div>
 
                 {/* Route Controls */}
@@ -379,11 +450,13 @@ export default function App() {
                     <button onClick={handleResetRoute} className="bg-white/95 backdrop-blur px-4 py-1.5 rounded-lg shadow-md border border-gray-200 text-xs font-bold text-red-500 hover:bg-red-50 transition-colors">{t.resetRoute}</button>
                 </div>
               </div>
-              <Map {...viewState} onMove={e => setViewState(e.viewState)} style={{ width: '100%', height: '100%' }} mapStyle={baseMap === 'osm' ? { version: 8, sources: { osm: { type: 'raster', tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'], tileSize: 256 } }, layers: [{ id: 'osm', type: 'raster', source: 'osm' }] } : { version: 8, sources: { gsi: { type: 'raster', tiles: ['https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'], tileSize: 256 } }, layers: [{ id: 'gsi', type: 'raster', source: 'gsi' }] }} mapLib={maplibregl} onClick={handleMapClick} cursor={mapPoints.length < 2 ? 'crosshair' : 'grab'}>
-                <NavigationControl position="bottom-right" />
-                {state.routeGeometry && <Source id="route" type="geojson" data={state.routeGeometry}><Layer id="route-bg" type="line" paint={{ 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.8 }} /><Layer id="route-fg" type="line" paint={{ 'line-color': '#3b82f6', 'line-width': 5, 'line-opacity': 0.9 }} /></Source>}
-                {mapPoints.map((p, i) => (<Marker key={i} longitude={p[0]} latitude={p[1]} anchor="bottom"><div className="relative group cursor-pointer"><MapPin size={36} className={`drop-shadow-md ${i===0?"text-emerald-500":i===mapPoints.length-1?"text-rose-500":"text-blue-500"}`} fill="white" /><span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg whitespace-nowrap z-50">{i===0?"Start":i===mapPoints.length-1?"End":`Via ${i}`}</span></div></Marker>))}
-              </Map>
+              {mapStyleData && (
+                <Map {...viewState} onMove={e => setViewState(e.viewState)} style={{ width: '100%', height: '100%' }} mapStyle={mapStyleData} mapLib={maplibregl} onClick={handleMapClick} cursor={mapPoints.length < 2 ? 'crosshair' : 'grab'}>
+                  <NavigationControl position="bottom-right" />
+                  {state.routeGeometry && <Source id="route" type="geojson" data={state.routeGeometry}><Layer id="route-bg" type="line" paint={{ 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.8 }} /><Layer id="route-fg" type="line" paint={{ 'line-color': '#3b82f6', 'line-width': 5, 'line-opacity': 0.9 }} /></Source>}
+                  {mapPoints.map((p, i) => (<Marker key={i} longitude={p[0]} latitude={p[1]} anchor="bottom"><div className="relative group cursor-pointer"><MapPin size={36} className={`drop-shadow-md ${i===0?"text-emerald-500":i===mapPoints.length-1?"text-rose-500":"text-blue-500"}`} fill="white" /><span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg whitespace-nowrap z-50">{i===0?"Start":i===mapPoints.length-1?"End":`Via ${i}`}</span></div></Marker>))}
+                </Map>
+              )}
             </div>
           )}
           {activeTab === 'result' && (
