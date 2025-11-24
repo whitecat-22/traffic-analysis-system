@@ -426,7 +426,38 @@ def create_sparse_ticks(x_bounds, min_gap_km=0.3):
     return tick_vals, tick_text
 
 
-def create_plot_common_fig(x_bounds, y_coords, z_spd, z_bn, z_aq, total_km, title, legend_config=None, direction="LtoR"):
+# --- 翻訳辞書 ---
+TRANSLATIONS = {
+    "ja": {
+        "title": "平均旅行速度モザイク図 (可変長区間)",
+        "period": "対象期間",
+        "speed": "速度",
+        "bn": "BN",
+        "aq": "AQ",
+        "avg_speed": "平均旅行速度(km/h)",
+        "bn_index": "BN指数",
+        "aq_index": "渋滞影響値(AQ)",
+        "distance": "距離 (km)",
+        "direction_ltr": "進行方向 ▶",
+        "direction_rtl": "◀ 進行方向"
+    },
+    "en": {
+        "title": "Average Travel Speed Mosaic Plot (Variable Segments)",
+        "period": "Period",
+        "speed": "Speed",
+        "bn": "BN",
+        "aq": "AQ",
+        "avg_speed": "Avg Speed (km/h)",
+        "bn_index": "BN Index",
+        "aq_index": "Congestion Impact (AQ)",
+        "distance": "Distance (km)",
+        "direction_ltr": "Direction ▶",
+        "direction_rtl": "◀ Direction"
+    }
+}
+
+def create_plot_common_fig(x_bounds, y_coords, z_spd, z_bn, z_aq, total_km, title, legend_config=None, direction="LtoR", lang="ja"):
+    t = TRANSLATIONS.get(lang, TRANSLATIONS["ja"])
     speed_scale, speed_zmax = generate_dynamic_speed_colorscale(legend_config)
 
     # X軸: リンク境界に目盛り、ラベルは間引く
@@ -441,24 +472,24 @@ def create_plot_common_fig(x_bounds, y_coords, z_spd, z_bn, z_aq, total_km, titl
     y_tick_vals_3h = []
     y_tick_text_3h = []
 
-    for t in y_coords:
+    for t_str in y_coords:
         try:
-            h = int(t.split(':')[0])
+            h = int(t_str.split(':')[0])
             # 1時間ごと
-            y_tick_vals_1h.append(t)
+            y_tick_vals_1h.append(t_str)
             y_tick_text_1h.append(f"{h:02d}:00")
 
             # 3時間ごと
             if h % 3 == 0:
-                y_tick_vals_3h.append(t)
+                y_tick_vals_3h.append(t_str)
                 y_tick_text_3h.append(f"{h:02d}:00")
             else:
-                y_tick_vals_3h.append(t)
+                y_tick_vals_3h.append(t_str)
                 y_tick_text_3h.append("")
         except:
-            y_tick_vals_1h.append(t)
+            y_tick_vals_1h.append(t_str)
             y_tick_text_1h.append("")
-            y_tick_vals_3h.append(t)
+            y_tick_vals_3h.append(t_str)
             y_tick_text_3h.append("")
 
     row_heights = [0.50, 0.20, 0.20]
@@ -475,49 +506,52 @@ def create_plot_common_fig(x_bounds, y_coords, z_spd, z_bn, z_aq, total_km, titl
 
     fig.add_trace(go.Heatmap(
         x=x_bounds, y=y_coords, z=z_spd, colorscale=speed_scale, zmin=0, zmax=speed_zmax,
-        colorbar=dict(len=y1_h, y=y1_bot + y1_h/2, x=1.01), name="速度", xgap=0.5, ygap=0.5
+        colorbar=dict(len=y1_h, y=y1_bot + y1_h/2, x=1.01), name=t["speed"], xgap=0.5, ygap=0.5
     ), row=1, col=1)
 
     fig.add_trace(go.Heatmap(
         x=x_bounds, y=y_coords, z=z_bn, colorscale=BN_COLORS, zmin=0, zmax=1,
-        colorbar=dict(len=y2_h, y=y2_bot + y2_h/2, x=1.01), name="BN", xgap=0.5, ygap=0.5
+        colorbar=dict(len=y2_h, y=y2_bot + y2_h/2, x=1.01), name=t["bn"], xgap=0.5, ygap=0.5
     ), row=2, col=1)
 
     fig.add_trace(go.Heatmap(
         x=x_bounds, y=y_coords, z=z_aq, colorscale=AQ_COLORS, zmin=0, zmax=1,
-        colorbar=dict(len=y3_h, y=y3_bot + y3_h/2, x=1.01), name="AQ", xgap=0.5, ygap=0.5
+        colorbar=dict(len=y3_h, y=y3_bot + y3_h/2, x=1.01), name=t["aq"], xgap=0.5, ygap=0.5
     ), row=3, col=1)
 
     # 進行方向設定
     if direction == "RtoL":
-        annot_text = "← 進行方向"
+        annot_text = t["direction_rtl"]
         annot_x = 1.0
         annot_anchor = "right"
         xaxis_range = [total_km, 0] # 反転
     else:
-        annot_text = "進行方向 →"
+        annot_text = t["direction_ltr"]
         annot_x = 0.0
         annot_anchor = "left"
         xaxis_range = [0, total_km]
 
     fig.update_layout(
         title=dict(text=title, font=dict(size=18, family=FONT_FAMILY), y=0.98),
-        height=1000, margin=dict(l=60, r=100, t=140, b=50), font=dict(family=FONT_FAMILY),
+        height=1000, margin=dict(l=60, r=100, t=140, b=100), font=dict(family=FONT_FAMILY),
         plot_bgcolor='rgb(245, 245, 245)',
-        # 進行方向ラベル
-        annotations=[dict(x=annot_x, y=1.01, xref="paper", yref="paper", text=annot_text, showarrow=False, font=dict(size=14, color="black"), xanchor=annot_anchor, yanchor="bottom")],
+        # 進行方向ラベルとクレジット表記
+        annotations=[
+            dict(x=annot_x, y=1.01, xref="paper", yref="paper", text=annot_text, showarrow=False, font=dict(size=14, color="black"), xanchor=annot_anchor, yanchor="bottom"),
+            dict(x=1.0, y=-0.08, xref="paper", yref="paper", text="©TomTom", showarrow=False, font=dict(size=12, color="gray"), xanchor="right", yanchor="top")
+        ],
 
         # 上段: 1時間刻み
-        yaxis1=dict(title="平均旅行速度(km/h)", autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals_1h, ticktext=y_tick_text_1h),
+        yaxis1=dict(title=t["avg_speed"], autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals_1h, ticktext=y_tick_text_1h),
         # 中段: 3時間刻み
-        yaxis2=dict(title="BN指数", autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals_3h, ticktext=y_tick_text_3h),
+        yaxis2=dict(title=t["bn_index"], autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals_3h, ticktext=y_tick_text_3h),
         # 下段: 3時間刻み
-        yaxis3=dict(title="渋滞影響値(AQ)", autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals_3h, ticktext=y_tick_text_3h),
+        yaxis3=dict(title=t["aq_index"], autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals_3h, ticktext=y_tick_text_3h),
 
         # X軸共通設定
         xaxis1=dict(tickmode="array", tickvals=x_tick_vals, ticktext=x_tick_text_empty, ticks="outside", showticklabels=True, range=xaxis_range),
         xaxis2=dict(tickmode="array", tickvals=x_tick_vals, ticktext=x_tick_text_empty, ticks="outside", showticklabels=True, range=xaxis_range),
-        xaxis3=dict(title="距離 (km)", tickmode="array", tickvals=x_tick_vals, ticktext=x_tick_text, range=xaxis_range, ticks="outside", showticklabels=True),
+        xaxis3=dict(title=t["distance"], tickmode="array", tickvals=x_tick_vals, ticktext=x_tick_text, range=xaxis_range, ticks="outside", showticklabels=True),
 
         hovermode="closest"
     )
@@ -583,7 +617,7 @@ def run_mosaic_analysis(input_dir, output_dir, target_files, config):
 
     # Create full time index
     # Dummy date is used to generate time range
-    full_range = pd.date_range(start=f"2000-01-01 {start_time_str}", end=f"2000-01-01 {end_time_str}", freq=f"{pitch_min}T")
+    full_range = pd.date_range(start=f"2000-01-01 {start_time_str}", end=f"2000-01-01 {end_time_str}", freq=f"{pitch_min}min")
     full_time_index = [t.strftime("%H:%M") for t in full_range]
 
     # Reindex to ensure all time slots are present and sorted
@@ -592,18 +626,21 @@ def run_mosaic_analysis(input_dir, output_dir, target_files, config):
     avg_bn_mosaic = avg_bn_mosaic.reindex(full_time_index, fill_value=0)
     avg_aq_mosaic = avg_aq_mosaic.reindex(full_time_index, fill_value=0)
 
-    title = f"平均旅行速度モザイク図 (可変長区間)    対象期間: {config.get('start_date')} - {config.get('end_date')}"
+    lang = config.get('lang', 'ja')
+    t = TRANSLATIONS.get(lang, TRANSLATIONS["ja"])
+    title = f"{t['title']}    {t['period']}: {config.get('start_date')} - {config.get('end_date')}"
+
     x_bounds = base_links["start_distance_km"].tolist() + [base_links["end_distance_km"].iloc[-1]]
     total_km = base_links["end_distance_km"].max()
     legend_config = config.get('speed_legend')
     direction = config.get('direction', 'LtoR')
-    print(f"[Logic] Direction: {direction}")
+    print(f"[Logic] Direction: {direction}, Lang: {lang}")
 
     print("[Logic] Generating Plot...")
     fig = create_plot_common_fig(
         x_bounds, avg_speed_mosaic.index,
         avg_speed_mosaic.values, avg_bn_mosaic.values, avg_aq_mosaic.values,
-        total_km, title, legend_config, direction=direction
+        total_km, title, legend_config, direction=direction, lang=lang
     )
 
     out_html = "result_mosaic.html"

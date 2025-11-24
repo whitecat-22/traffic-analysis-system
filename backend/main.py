@@ -59,6 +59,7 @@ class AnalysisRequest(BaseModel):
     route_geometry: Optional[Dict] = None
     speed_legend: Optional[List[Dict]] = None
     direction: str = "LtoR"
+    lang: str = "ja"
 
 # --- Helper Functions ---
 

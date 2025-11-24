@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Calendar, FileText, Play, Loader2, Upload, Settings2, Plus, Trash2, X } from 'lucide-react';
-import { AppState, LegendItem } from '../types'; // 型定義をtypes.tsからインポート
+import type { AppState, LegendItem } from '../types'; // 型定義をtypes.tsからインポート
+ // 型定義をtypes.tsからインポート
 import axios from 'axios';
 
 interface Props {

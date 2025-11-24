@@ -4,15 +4,15 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import axios from 'axios';
 import {
-  LayoutDashboard, Map as MapIcon, BarChart3, Settings,
+  Car, MapPinned as MapIcon, BarChart3,
   Calendar as CalIcon, FileText, Play, Upload,
-  Plus, Trash2, X, Download, ExternalLink, Search,
+  Plus, Trash2, SquareX, Search,
   CheckSquare, Square, Loader2, MapPin, ChevronRight,
-  Settings2, Clock, CalendarDays, Globe, Infinity as InfinityIcon,
-  CheckCircle2, Route as RouteIcon
+  Settings2, Clock, CalendarDays, Earth, Infinity as InfinityIcon,
+  Route as RouteIcon, SignpostBig, RouteOff, GaugeCircle, User
 } from 'lucide-react';
 
-import { TEXTS, type Lang, type Translation } from './i18n';
+import { TEXTS, type Lang } from './i18n';
 
 // --- Types ---
 interface LegendItem { speed: number; color: string; }
@@ -29,10 +29,9 @@ interface AppState {
 // --- Components ---
 
 
-// 汎用メッセージモーダル
 const MessageModal: React.FC<{
-  isOpen: boolean; onClose: () => void; title: string; message: string; isError?: boolean;
-}> = ({ isOpen, onClose, title, message, isError }) => {
+  isOpen: boolean; onClose: () => void; title: string; message: string; isError?: boolean; okLabel?: string;
+}> = ({ isOpen, onClose, title, message, isError, okLabel }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
@@ -47,7 +46,7 @@ const MessageModal: React.FC<{
         </div>
         <p className="text-gray-600 mb-6 leading-relaxed whitespace-pre-wrap">{message}</p>
         <button onClick={onClose} className={`w-full py-2.5 rounded-lg font-medium text-white transition-colors ${isError ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
-          OK
+          {okLabel || 'OK'}
         </button>
       </div>
     </div>
@@ -86,7 +85,7 @@ const ControlPanel: React.FC<{
 
     const invalidFiles = files.filter(f => !f.name.endsWith('.geojson') && !f.name.endsWith('.json'));
     if (invalidFiles.length > 0) {
-      onError("ファイル形式エラー", "GeoJSONファイル (.geojson, .json) のみアップロード可能です。");
+      onError(t.fileFormatError, t.fileFormatErrorMsg);
       return;
     }
 
@@ -99,7 +98,7 @@ const ControlPanel: React.FC<{
       await fetchFiles();
       onSuccess();
     } catch {
-      onError("アップロード失敗", "ファイルのアップロードに失敗しました。");
+      onError(t.uploadFailTitle, t.uploadFailMsg);
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -193,18 +192,18 @@ const ControlPanel: React.FC<{
               </div>
             </div>
             <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">{t.agg}</label>
+              <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><Clock size={10}/> {t.agg}</label>
               <div className="flex gap-1">
                 {[15, 30, 60].map(m => (
-                  <button key={m} onClick={() => setState(p => ({...p, pitch: m}))} className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all border ${state.pitch===m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>{m}m</button>
+                  <button key={m} onClick={() => setState(p => ({...p, pitch: m}))} className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all border ${state.pitch===m ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>{m}{t.minutes}</button>
                 ))}
               </div>
             </div>
             <div>
-              <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">DIRECTION</label>
+              <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 flex items-center gap-1"><SignpostBig size={10}/> {t.direction}</label>
               <div className="flex gap-1">
-                <button onClick={() => setState(p => ({...p, direction: 'LtoR'}))} className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all border ${state.direction==='LtoR' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>L &rarr; R</button>
-                <button onClick={() => setState(p => ({...p, direction: 'RtoL'}))} className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all border ${state.direction==='RtoL' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>R &rarr; L</button>
+                <button onClick={() => setState(p => ({...p, direction: 'LtoR'}))} className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all border ${state.direction==='LtoR' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>{t.lToR}</button>
+                <button onClick={() => setState(p => ({...p, direction: 'RtoL'}))} className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all border ${state.direction==='RtoL' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>{t.rToL}</button>
               </div>
             </div>
           </div>
@@ -230,8 +229,8 @@ const ControlPanel: React.FC<{
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-xs overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex justify-between items-center">
-              <h3 className="font-bold text-gray-800 text-sm">{t.speedLegend}</h3>
-              <button onClick={() => setShowLegend(false)}><X size={16} className="text-gray-400 hover:text-gray-600"/></button>
+              <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2"><GaugeCircle size={16}/> {t.legendTitle}</h3>
+              <button onClick={() => setShowLegend(false)}><SquareX size={16} className="text-gray-400 hover:text-gray-600"/></button>
             </div>
             <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
               {legend.map((item, i) => {
@@ -312,7 +311,7 @@ export default function App() {
       } catch (e) {
         console.error("Failed to load map style from backend", e);
         if (baseMap === 'osm') {
-            showErrorModal("地図読み込みエラー", "地図スタイルの読み込みに失敗しました。バックエンドのAPIキー設定を確認してください。");
+            showErrorModal(t.mapLoadError, t.mapLoadErrorMsg);
         }
       }
     };
@@ -332,7 +331,7 @@ export default function App() {
   // ボタン押下: マップマッチング実行
   const handleRouteMatch = async () => {
     if (mapPoints.length < 2) {
-      showErrorModal("地点不足", "ルート探索には少なくとも2つの地点（Start/End）が必要です。地図上をクリックして地点を追加してください。");
+      showErrorModal(t.pointShortage, t.pointShortageMsg);
       return;
     }
 
@@ -347,19 +346,19 @@ export default function App() {
 
         if (res.data.properties?.fallback) {
           console.warn("Map match fallback used.");
-          showErrorModal("ルート探索失敗", "ルート探索に失敗したため、直線で表示します。(Valhalla Error)");
+          showErrorModal(t.routeMatchFail, t.routeMatchFallbackMsg);
         }
       } else {
         console.warn("No geometry in response");
-        showErrorModal("ルート探索失敗", "ルートが見つかりませんでした");
+        showErrorModal(t.routeMatchFail, t.routeMatchFailMsg);
       }
     } catch (error: any) {
       console.error("Match error", error);
       if (error.response && error.response.status === 404) {
-        showErrorModal("データが見つかりません", "指定されたルート方向に対応するデータが見つかりませんでした。\nルートの向き（Start/End）がデータの進行方向と一致しているか確認してください。");
+        showErrorModal(t.dataNotFound, t.dataNotFoundMsg);
       } else {
-        const errMsg = error.response?.data?.detail || "通信エラーが発生しました";
-        showErrorModal("マップマッチング失敗", errMsg);
+        const errMsg = error.response?.data?.detail || t.communicationError;
+        showErrorModal(t.mapMatchFail, errMsg);
       }
     } finally {
       setIsMatching(false);
@@ -373,7 +372,7 @@ export default function App() {
 
   const handleAnalyze = async (legend: LegendItem[]) => {
     if (state.probeFiles.length === 0) {
-      showErrorModal("ファイル未選択", "分析対象のファイルを選択してください。");
+      showErrorModal(t.fileNotSelected, t.fileNotSelectedMsg);
       return;
     }
     setState(p => ({ ...p, isAnalyzing: true }));
@@ -383,7 +382,7 @@ export default function App() {
         start_date: state.dateRange.start, end_date: state.dateRange.end,
         start_time: state.timeRange.start, end_time: state.timeRange.end,
         time_pitch: state.pitch, route_geometry: state.routeGeometry?.geometry,
-        speed_legend: legend, direction: state.direction
+        speed_legend: legend, direction: state.direction, lang: lang
       });
       if (res.data?.results) {
         setState(p => ({ ...p, analysisResult: { htmlUrl: `http://localhost:8000${res.data.results.html_url}` } }));
@@ -391,9 +390,9 @@ export default function App() {
       }
     } catch (e: any) {
       if (e.response && e.response.status === 404) {
-        showErrorModal("データが見つかりません", "指定されたルート方向に対応するデータが見つかりませんでした。\nルートの向き（Start/End）がデータの進行方向と一致しているか確認してください。");
+        showErrorModal(t.dataNotFound, t.dataNotFoundMsg);
       } else {
-        showErrorModal("分析エラー", `Error: ${e.response?.data?.detail || e.message}`);
+        showErrorModal(t.analysisError, `Error: ${e.response?.data?.detail || e.message}`);
       }
     }
     finally { setState(p => ({ ...p, isAnalyzing: false })); }
@@ -411,25 +410,25 @@ export default function App() {
             const { lat, lon } = res.data[0];
             setViewState(p => ({ ...p, latitude: parseFloat(lat), longitude: parseFloat(lon), zoom: 13 }));
         } else {
-            showErrorModal("検索結果なし", TEXTS[lang].noResult);
+            showErrorModal(t.searchResultNone, t.noResult);
         }
     } catch (e) {
         console.error("Search failed", e);
-        showErrorModal("検索エラー", "場所の検索に失敗しました。");
+        showErrorModal(t.searchError, t.searchErrorMsg);
     }
   };
 
   return (
     <div className="flex w-screen h-screen bg-gray-50 font-sans overflow-hidden">
-      <MessageModal isOpen={showSuccess} onClose={() => setShowSuccess(false)} title={t.uploadSuccessTitle} message={t.uploadSuccessMsg} />
-      <MessageModal isOpen={showError} onClose={() => setShowError(false)} title={errorTitle} message={errorMsg} isError={true} />
+      <MessageModal isOpen={showSuccess} onClose={() => setShowSuccess(false)} title={t.uploadSuccessTitle} message={t.uploadSuccessMsg} okLabel={t.ok} />
+      <MessageModal isOpen={showError} onClose={() => setShowError(false)} title={errorTitle} message={errorMsg} isError={true} okLabel={t.ok} />
       <aside className="w-16 flex-shrink-0 bg-[#1e1e24] text-white flex flex-col items-center py-6 shadow-2xl z-20">
-        <div className="mb-8 p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-900/50 text-white"><LayoutDashboard size={24} /></div>
+        <div className="mb-8 p-2 bg-[#1e1e24] rounded-xl text-white"><Car size={24} /></div>
         <nav className="flex-1 space-y-4 w-full flex flex-col items-center px-2">
           <button onClick={() => setActiveTab('map')} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all relative group ${activeTab === 'map' ? 'bg-blue-600 text-white shadow-md' : 'bg-transparent text-gray-400 hover:bg-white/10 hover:text-white'}`}><MapIcon size={20} /><span className="absolute left-12 bg-gray-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30 shadow-lg border border-gray-700">{t.mapView}</span></button>
           <button onClick={() => setActiveTab('result')} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all relative group ${activeTab === 'result' ? 'bg-blue-600 text-white shadow-md' : 'bg-transparent text-gray-400 hover:bg-white/10 hover:text-white'}`}><BarChart3 size={20} /><span className="absolute left-12 bg-gray-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30 shadow-lg border border-gray-700">{t.results}</span></button>
         </nav>
-        <div className="pb-4"><button onClick={() => setLang(l => l==='en'?'ja':'en')} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-white transition-colors font-bold text-xs rounded-full hover:bg-white/10"><Globe size={18}/></button></div>
+        <div className="pb-4"><button onClick={() => setLang(l => l==='en'?'ja':'en')} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-white transition-colors font-bold text-xs rounded-full hover:bg-white/10"><Earth size={18}/></button></div>
       </aside>
       <ControlPanel
         state={state}
@@ -443,7 +442,7 @@ export default function App() {
         <header className="h-14 bg-white border-b border-gray-200 px-6 flex items-center justify-end flex-shrink-0 z-10 shadow-sm">
           <form onSubmit={handleSearch} className="flex items-center gap-4">
             <div className="bg-gray-50 px-3 py-1.5 rounded-full flex items-center gap-2 border border-gray-200 focus-within:ring-2 ring-blue-100 transition-all w-64"><Search size={14} className="text-gray-400"/><input type="text" value={searchText} onChange={(e) => setSearchText(e.target.value)} placeholder={t.search} className="bg-transparent text-xs outline-none w-full text-gray-600 placeholder-gray-400"/></div>
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-md border-2 border-white cursor-pointer">U</div>
+            <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center text-gray-500 shadow-sm border-2 border-white cursor-pointer"><User size={18} /></div>
           </form>
         </header>
         <div className="flex-1 relative w-full h-full">
@@ -452,7 +451,7 @@ export default function App() {
               <div className="absolute top-4 right-4 z-10 flex gap-2">
                 <div className="bg-white/95 backdrop-blur shadow-md border border-gray-200 p-1 rounded-lg flex text-xs">
                   <button onClick={() => setBaseMap('osm')} className={`px-3 py-1.5 rounded-md font-medium transition-colors ${baseMap==='osm'?'bg-blue-600 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}>OSM</button>
-                  <button onClick={() => setBaseMap('gsi')} className={`px-3 py-1.5 rounded-md font-medium transition-colors ${baseMap==='gsi'?'bg-blue-600 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}>地理院地図</button>
+                  <button onClick={() => setBaseMap('gsi')} className={`px-3 py-1.5 rounded-md font-medium transition-colors ${baseMap==='gsi'?'bg-blue-600 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}>{t.gsiMap}</button>
                 </div>
 
                 {/* Route Controls */}
@@ -465,7 +464,7 @@ export default function App() {
                         {isMatching ? <Loader2 size={12} className="animate-spin"/> : <RouteIcon size={12}/>}
                         {isMatching ? t.matching : t.matchRoute}
                     </button>
-                    <button onClick={handleResetRoute} className="bg-white/95 backdrop-blur px-4 py-1.5 rounded-lg shadow-md border border-gray-200 text-xs font-bold text-red-500 hover:bg-red-50 transition-colors">{t.resetRoute}</button>
+                    <button onClick={handleResetRoute} className="bg-white/95 backdrop-blur px-4 py-1.5 rounded-lg shadow-md border border-gray-200 text-xs font-bold text-red-500 hover:bg-red-50 transition-colors flex items-center gap-1"><RouteOff size={12}/> {t.resetRoute}</button>
                 </div>
               </div>
               <Map
@@ -479,7 +478,7 @@ export default function App() {
               >
                 <NavigationControl position="bottom-right" />
                 {state.routeGeometry && <Source id="route" type="geojson" data={state.routeGeometry}><Layer id="route-bg" type="line" paint={{ 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.8 }} /><Layer id="route-fg" type="line" paint={{ 'line-color': '#3b82f6', 'line-width': 5, 'line-opacity': 0.9 }} /></Source>}
-                {mapPoints.map((p, i) => (<Marker key={i} longitude={p[0]} latitude={p[1]} anchor="bottom"><div className="relative group cursor-pointer"><MapPin size={36} className={`drop-shadow-md ${i===0?"text-emerald-500":i===mapPoints.length-1?"text-rose-500":"text-blue-500"}`} fill="white" /><span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg whitespace-nowrap z-50">{i===0?"Start":i===mapPoints.length-1?"End":`Via ${i}`}</span></div></Marker>))}
+                {mapPoints.map((p, i) => (<Marker key={i} longitude={p[0]} latitude={p[1]} anchor="bottom"><div className="relative group cursor-pointer"><MapPin size={36} className={`drop-shadow-md ${i===0?"text-emerald-500":i===mapPoints.length-1?"text-rose-500":"text-blue-500"}`} fill="white" /><span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg whitespace-nowrap z-50">{i===0?t.start:i===mapPoints.length-1?t.end:`${t.via} ${i}`}</span></div></Marker>))}
               </Map>
             </div>
           )}
