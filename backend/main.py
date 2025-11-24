@@ -166,7 +166,7 @@ async def map_match(points: List[List[float]] = Body(...)):
             "lon": p[0],
             "lat": p[1],
             "type": "break",
-            "radius": 50,  # 半径5km以内の道路を許容（No suitable edges対策）
+            "radius": 50,  # 検索半径を拡大して主要道路を拾いやすくする
             "street_side_tolerance": 50  # 道路からの距離許容値を拡大
         })
 
@@ -175,13 +175,21 @@ async def map_match(points: List[List[float]] = Body(...)):
         "costing": "auto",
         "units": "kilometers",
         "language": "ja-JP",
-        # 通行条件の緩和
+        # 道路種別(0->1->2...)を優先し、ループを回避するための設定
         "costing_options": {
             "auto": {
-                "include_private": True,
-                "include_alleys": True,
+                # 右左折に対するペナルティを増やし、直進性の高い主要道路を優先
+                "maneuver_penalty": 35,
+                # 路地や私道の利用を制限
+                "include_private": False,
+                "include_alleys": False,
                 "include_driveways": True,
-                "search_radius": 50  # 一部のバージョンで有効な場合があるため念のため追加
+                # 生活道路の利用頻度を下げる
+                "use_living_streets": 0.1,
+                # サービスロードへのペナルティ
+                "service_penalty": 15,
+                # 検索半径
+                "search_radius": 50
             }
         }
     }

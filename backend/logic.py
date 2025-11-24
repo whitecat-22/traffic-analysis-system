@@ -182,38 +182,60 @@ def generate_dynamic_speed_colorscale(legend_config):
     return scale, max_speed
 
 
-def create_custom_ticks(x_bounds, label_interval_km=0.5):
+def create_sparse_ticks(x_bounds, min_gap_km=0.3):
+    """
+    リンク境界(x_bounds)全てに目盛りを振るが、
+    ラベル(数値)は重ならないように間引く。
+    """
     tick_vals = x_bounds
-    tick_text = [""] * len(x_bounds)
-    total_km = x_bounds[-1]
+    tick_text = []
+    last_val = -999.0
 
-    targets = np.arange(0, total_km + 0.001, label_interval_km)
-
-    for t in targets:
-        idx = (np.abs(np.array(x_bounds) - t)).argmin()
-        tick_text[idx] = f"{t:.1f}"
+    for x in x_bounds:
+        # 最初の点(0)は表示、以降はmin_gap_km以上離れていれば表示
+        if x == 0 or (x - last_val >= min_gap_km):
+            tick_text.append(f"{x:.1f}")
+            last_val = x
+        else:
+            tick_text.append("")
 
     return tick_vals, tick_text
 
 
 def create_plot_common_fig(x_bounds, y_coords, z_spd, z_bn, z_aq, total_km, title, legend_config=None):
     speed_scale, speed_zmax = generate_dynamic_speed_colorscale(legend_config)
-    x_tick_vals, x_tick_text = create_custom_ticks(x_bounds, 0.5)
 
-    y_tick_vals = []
-    y_tick_text = []
+    # X軸: リンク境界に目盛り、ラベルは間引く
+    x_tick_vals, x_tick_text = create_sparse_ticks(x_bounds, min_gap_km=0.4)
+    # 上段・中段用（目盛りはあるがラベルはなし）
+    x_tick_text_empty = [""] * len(x_tick_vals)
+
+    # Y軸(1時間ごと) - 上段用
+    y_tick_vals_1h = []
+    y_tick_text_1h = []
+    # Y軸(3時間ごと) - 中・下段用
+    y_tick_vals_3h = []
+    y_tick_text_3h = []
+
     for t in y_coords:
         try:
             h = int(t.split(':')[0])
+            # 1時間ごと
+            y_tick_vals_1h.append(t)
+            y_tick_text_1h.append(f"{h:02d}:00")
+
+            # 3時間ごと
             if h % 3 == 0:
-                y_tick_vals.append(t)
-                y_tick_text.append(f"{h:02d}:00")
+                y_tick_vals_3h.append(t)
+                y_tick_text_3h.append(f"{h:02d}:00")
             else:
-                y_tick_vals.append(t)
-                y_tick_text.append("")
+                y_tick_vals_3h.append(t)
+                y_tick_text_3h.append("")
         except:
-            y_tick_vals.append(t)
-            y_tick_text.append("")
+            y_tick_vals_1h.append(t)
+            y_tick_text_1h.append("")
+            y_tick_vals_3h.append(t)
+            y_tick_text_3h.append("")
 
     row_heights = [0.50, 0.20, 0.20]
     vs = 0.05
@@ -244,19 +266,28 @@ def create_plot_common_fig(x_bounds, y_coords, z_spd, z_bn, z_aq, total_km, titl
 
     fig.update_layout(
         title=dict(text=title, font=dict(size=18, family=FONT_FAMILY), y=0.98),
-        height=1000, margin=dict(l=60, r=100, t=100, b=50), font=dict(family=FONT_FAMILY),
+        height=1000, margin=dict(l=60, r=100, t=140, b=50), font=dict(family=FONT_FAMILY),
         plot_bgcolor='rgb(245, 245, 245)',
-        annotations=[dict(x=0, y=0.98, xref="paper", yref="paper", text="進行方向 →", showarrow=False, font=dict(size=14, color="black"), xanchor="left")],
-        yaxis1=dict(title="平均旅行速度(km/h)", autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals, ticktext=y_tick_text),
-        yaxis2=dict(title="BN指数", autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals, ticktext=y_tick_text),
-        yaxis3=dict(title="渋滞影響値(AQ)", autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals, ticktext=y_tick_text),
-        xaxis3=dict(title="距離 (km)", tickmode="array", tickvals=x_tick_vals, ticktext=x_tick_text, range=[0, total_km]),
+        # 進行方向ラベルをグラフ領域の上に (y > 1)
+        annotations=[dict(x=0, y=1.01, xref="paper", yref="paper", text="進行方向 →", showarrow=False, font=dict(size=14, color="black"), xanchor="left", yanchor="bottom")],
+
+        # 上段: 1時間刻み
+        yaxis1=dict(title="平均旅行速度(km/h)", autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals_1h, ticktext=y_tick_text_1h),
+        # 中段: 3時間刻み
+        yaxis2=dict(title="BN指数", autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals_3h, ticktext=y_tick_text_3h),
+        # 下段: 3時間刻み
+        yaxis3=dict(title="渋滞影響値(AQ)", autorange="reversed", dtick=1, tickmode="array", tickvals=y_tick_vals_3h, ticktext=y_tick_text_3h),
+
+        # X軸共通設定 (tickvalsは全リンク境界)
+        # 上段: ラベルなし（空文字）、目盛りあり
+        xaxis1=dict(tickmode="array", tickvals=x_tick_vals, ticktext=x_tick_text_empty, ticks="outside", showticklabels=True),
+        # 中段: ラベルなし（空文字）、目盛りあり
+        xaxis2=dict(tickmode="array", tickvals=x_tick_vals, ticktext=x_tick_text_empty, ticks="outside", showticklabels=True),
+        # 下段: 間引きラベルあり、目盛りあり
+        xaxis3=dict(title="距離 (km)", tickmode="array", tickvals=x_tick_vals, ticktext=x_tick_text, range=[0, total_km], ticks="outside", showticklabels=True),
+
         hovermode="closest"
     )
-
-    fig.update_xaxes(showticklabels=False, row=1, col=1)
-    fig.update_xaxes(showticklabels=False, row=2, col=1)
-    fig.update_xaxes(showticklabels=True, row=3, col=1)
 
     return fig
 

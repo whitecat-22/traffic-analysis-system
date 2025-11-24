@@ -102,7 +102,7 @@ def build_valhalla():
     docker run --rm -v "{CUSTOM_FILES_DIR}":/custom_files {VALHALLA_IMAGE} \
         valhalla_build_tiles \
         --config /custom_files/valhalla.json \
-        --concurrency 2 \
+        --concurrency 1 \
         /custom_files/{PBF_FILENAME}
     """
     run_command(cmd_tiles, "Building Tiles")

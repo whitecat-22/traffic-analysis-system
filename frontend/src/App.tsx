@@ -12,32 +12,7 @@ import {
   CheckCircle2, Route as RouteIcon
 } from 'lucide-react';
 
-// --- i18n ---
-const TEXTS = {
-  en: {
-    config: "Configuration", param: "Analysis Parameters", dataSource: "Data Sources",
-    upload: "Upload Files", probe: "Probe Data", link: "Link Data", period: "Period & Time",
-    from: "From", to: "To", timeRange: "Daily Time Range", agg: "Aggregation",
-    legend: "Legend Settings", edit: "Config", run: "Run Analysis", processing: "Processing...",
-    noFiles: "No files", mapView: "Map View", results: "Results", resetRoute: "Reset Route",
-    search: "Search location...", noResult: "No Analysis Results", speedLegend: "Speed Legend",
-    addRange: "Add Range", done: "Done", kmh: "km/h",
-    uploadSuccessTitle: "Upload Complete", uploadSuccessMsg: "Files uploaded successfully.",
-    matchRoute: "Match Route", matching: "Matching..."
-  },
-  ja: {
-    config: "設定", param: "分析パラメータ", dataSource: "データソース",
-    upload: "ファイルアップロード", probe: "プローブデータ", link: "リンクデータ", period: "期間・時間帯",
-    from: "開始日", to: "終了日", timeRange: "時間帯指定", agg: "集計ピッチ",
-    legend: "凡例設定", edit: "編集", run: "分析実行", processing: "処理中...",
-    noFiles: "ファイルなし", mapView: "地図表示", results: "分析結果", resetRoute: "ルートリセット",
-    search: "場所を検索...", noResult: "分析結果がありません", speedLegend: "速度凡例",
-    addRange: "範囲追加", done: "完了", kmh: "km/h",
-    uploadSuccessTitle: "アップロード完了", uploadSuccessMsg: "ファイルのアップロードが完了しました。",
-    matchRoute: "ルート探索実行", matching: "探索中..."
-  }
-};
-type Lang = 'en' | 'ja';
+import { TEXTS, Lang, Translation } from './i18n';
 
 // --- Types ---
 interface LegendItem { speed: number; color: string; }
@@ -52,7 +27,7 @@ interface AppState {
 
 // --- Components ---
 
-const UploadSuccessModal: React.FC<{ onClose: () => void, t: any }> = ({ onClose, t }) => (
+const UploadSuccessModal: React.FC<{ onClose: () => void, t: Translation }> = ({ onClose, t }) => (
   <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
     <div className="bg-white rounded-xl shadow-2xl p-6 w-80 flex flex-col items-center text-center">
       <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4 text-green-600">
