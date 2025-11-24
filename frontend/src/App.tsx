@@ -284,8 +284,8 @@ export default function App() {
         setState(p => ({ ...p, routeGeometry: { type: 'Feature', geometry: res.data.geometry } }));
       } else if (res.data?.fallback) {
         // フォールバック時
-         console.warn("Map match fallback used.");
-         alert(res.data?.properties?.matched === false ? "ルート探索に失敗したため、直線で表示します。(Valhalla Error)" : "ルートが見つかりませんでした");
+        console.warn("Map match fallback used.");
+        alert(res.data?.properties?.matched === false ? "ルート探索に失敗したため、直線で表示します。(Valhalla Error)" : "ルートが見つかりませんでした");
       }
     } catch (error: any) {
       console.error("Match error", error);
