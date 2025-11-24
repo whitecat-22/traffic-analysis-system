@@ -23,38 +23,53 @@ interface AppState {
   timeRange: { start: string; end: string };
   pitch: number; routeGeometry: any | null;
   analysisResult: { htmlUrl: string } | null; isAnalyzing: boolean;
+  direction: 'LtoR' | 'RtoL';
 }
 
 // --- Components ---
 
-const UploadSuccessModal: React.FC<{ onClose: () => void, t: Translation }> = ({ onClose, t }) => (
-  <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-    <div className="bg-white rounded-xl shadow-2xl p-6 w-80 flex flex-col items-center text-center">
-      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mb-4 text-green-600">
-        <CheckCircle2 size={28} />
+
+// 汎用メッセージモーダル
+const MessageModal: React.FC<{
+  isOpen: boolean; onClose: () => void; title: string; message: string; isError?: boolean;
+}> = ({ isOpen, onClose, title, message, isError }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
+      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 transform transition-all scale-100">
+        <div className={`flex items-center gap-3 mb-4 ${isError ? 'text-red-600' : 'text-green-600'}`}>
+          {isError ? (
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          ) : (
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+          )}
+          <h3 className="text-xl font-bold">{title}</h3>
+        </div>
+        <p className="text-gray-600 mb-6 leading-relaxed whitespace-pre-wrap">{message}</p>
+        <button onClick={onClose} className={`w-full py-2.5 rounded-lg font-medium text-white transition-colors ${isError ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
+          OK
+        </button>
       </div>
-      <h3 className="text-lg font-bold text-gray-800 mb-2">{t.uploadSuccessTitle}</h3>
-      <p className="text-sm text-gray-500 mb-6">{t.uploadSuccessMsg}</p>
-      <button onClick={onClose} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors">
-        OK
-      </button>
     </div>
-  </div>
-);
+  );
+};
 
 const ControlPanel: React.FC<{
   state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>>;
   onAnalyze: (legend: LegendItem[]) => void; lang: Lang;
-}> = ({ state, setState, onAnalyze, lang }) => {
+  onError: (title: string, msg: string) => void;
+  onSuccess: () => void;
+}> = ({ state, setState, onAnalyze, lang, onError, onSuccess }) => {
   const t = TEXTS[lang];
   const [files, setFiles] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
-  const [showSuccess, setShowSuccess] = useState(false);
 
   const [legend, setLegend] = useState<LegendItem[]>([
-    { speed: 20, color: '#ff0000' }, { speed: 40, color: '#ffff00' },
-    { speed: 60, color: '#00ff00' }, { speed: 80, color: '#0000ff' }
+    { speed: 20, color: '#ff0000' },
+    { speed: 40, color: '#ffff00' },
+    { speed: 60, color: '#00ff00' },
+    { speed: 80, color: '#0000ff' }
   ]);
 
   const fetchFiles = async () => {
@@ -67,16 +82,24 @@ const ControlPanel: React.FC<{
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
+
+    const invalidFiles = files.filter(f => !f.name.endsWith('.geojson') && !f.name.endsWith('.json'));
+    if (invalidFiles.length > 0) {
+      onError("ファイル形式エラー", "GeoJSONファイル (.geojson, .json) のみアップロード可能です。");
+      return;
+    }
+
     const formData = new FormData();
-    Array.from(e.target.files).forEach(file => formData.append('files', file));
+    files.forEach(f => formData.append('files', f));
 
     setIsUploading(true);
     try {
       await axios.post('http://localhost:8000/upload', formData);
       await fetchFiles();
-      setShowSuccess(true);
+      onSuccess();
     } catch {
-      alert("Upload failed");
+      onError("アップロード失敗", "ファイルのアップロードに失敗しました。");
     } finally {
       setIsUploading(false);
       e.target.value = '';
@@ -177,6 +200,13 @@ const ControlPanel: React.FC<{
                 ))}
               </div>
             </div>
+            <div>
+              <label className="text-[10px] font-bold text-gray-500 uppercase mb-1 block">DIRECTION</label>
+              <div className="flex gap-1">
+                <button onClick={() => setState(p => ({...p, direction: 'LtoR'}))} className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all border ${state.direction==='LtoR' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>L &rarr; R</button>
+                <button onClick={() => setState(p => ({...p, direction: 'RtoL'}))} className={`flex-1 py-1 text-[10px] font-bold rounded-md transition-all border ${state.direction==='RtoL' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}>R &rarr; L</button>
+              </div>
+            </div>
           </div>
         </section>
         <hr className="border-gray-100"/>
@@ -226,7 +256,7 @@ const ControlPanel: React.FC<{
         </div>
       )}
 
-      {showSuccess && <UploadSuccessModal onClose={() => setShowSuccess(false)} t={t} />}
+
     </div>
   );
 };
@@ -238,7 +268,8 @@ export default function App() {
   const [state, setState] = useState<AppState>({
     probeFiles: [], linkFiles: [],
     dateRange: { start: new Date().toISOString().split('T')[0], end: new Date().toISOString().split('T')[0] },
-    timeRange: { start: '00:00', end: '23:00' }, pitch: 60, routeGeometry: null, analysisResult: null, isAnalyzing: false
+    timeRange: { start: '00:00', end: '23:00' }, pitch: 60, routeGeometry: null, analysisResult: null, isAnalyzing: false,
+    direction: 'LtoR'
   });
   const [activeTab, setActiveTab] = useState<'map' | 'result'>('map');
   const [viewState, setViewState] = useState({ longitude: 139.767, latitude: 35.681, zoom: 10 });
@@ -247,118 +278,89 @@ export default function App() {
   const [mapStyleData, setMapStyleData] = useState<any>(null);
   const [searchText, setSearchText] = useState("");
   const [isMatching, setIsMatching] = useState(false); // マッチング中フラグ
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [showError, setShowError] = useState(false);
+  const [errorTitle, setErrorTitle] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY;
+  // スタイルキャッシュ (クライアントサイド)
+  const styleCache = React.useRef<{[key: string]: any}>({});
 
-  // --- Style Processing Helpers ---
-  const hexToGray = (hex: string) => {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    // 輝度計算 (Y = 0.299R + 0.587G + 0.114B)
-    const y = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
-    const grayHex = y.toString(16).padStart(2, '0');
-    return `#${grayHex}${grayHex}${grayHex}`;
-  };
-
-  const convertToGrayscale = (styleJson: any) => {
-    let styleStr = JSON.stringify(styleJson);
-    // #RRGGBB 形式の色コードを検索して置換
-    styleStr = styleStr.replace(/"#(?:[0-9a-fA-F]{3}){1,2}"/g, (match) => {
-      const hex = match.replace(/"/g, '');
-      if (hex.length === 4) { // #RGB -> #RRGGBB
-        const r = hex[1]; const g = hex[2]; const b = hex[3];
-        return `"${hexToGray(`#${r}${r}${g}${g}${b}${b}`)}"`;
-      }
-      if (hex.length === 7) {
-        return `"${hexToGray(hex)}"`;
-      }
-      return match;
-    });
-    return JSON.parse(styleStr);
+  // エラーモーダル表示ヘルパー
+  const showErrorModal = (title: string, msg: string) => {
+    setErrorTitle(title);
+    setErrorMsg(msg);
+    setShowError(true);
   };
 
   useEffect(() => {
     const loadStyle = async () => {
-      let url = '';
-      let needsGrayscale = false;
-
-      if (baseMap === 'osm') {
-        if (!MAPTILER_KEY) {
-          console.warn("MapTiler Key is missing.");
-          return;
-        }
-        // MIERUNE Gray (MapTiler JP)
-        // ※アカウントによっては利用できない場合があります。その場合は 'dataviz-light' 等に変更してください。
-        url = `https://api.maptiler.com/maps/jp-mierune-gray/style.json?key=${MAPTILER_KEY}`;
-      } else if (baseMap === 'gsi') {
-        url = 'https://gsi-cyberjapan.github.io/gsivectortile-mapbox-gl-js/pale.json';
-        needsGrayscale = true;
+      // 1. キャッシュにあればそれを使う (高速化)
+      if (styleCache.current[baseMap]) {
+        setMapStyleData(styleCache.current[baseMap]);
+        return;
       }
 
+      // 2. なければバックエンドから取得
       try {
-        const res = await axios.get(url);
-        if (needsGrayscale) {
-          setMapStyleData(convertToGrayscale(res.data));
-        } else {
-          setMapStyleData(res.data);
-        }
+        const res = await axios.get(`http://localhost:8000/map-style/${baseMap}`);
+        const style = res.data;
+
+        // キャッシュに保存
+        styleCache.current[baseMap] = style;
+        setMapStyleData(style);
       } catch (e) {
-        console.error("Failed to load map style", e);
-        // フォールバック: MIERUNE Grayが403等の場合、Basicを試すなどの処理が考えられます
+        console.error("Failed to load map style from backend", e);
         if (baseMap === 'osm') {
-             alert("MIERUNE Grayの読み込みに失敗しました。APIキーまたはプランを確認してください。");
+            showErrorModal("地図読み込みエラー", "地図スタイルの読み込みに失敗しました。バックエンドのAPIキー設定を確認してください。");
         }
       }
     };
     loadStyle();
-  }, [baseMap, MAPTILER_KEY]);
+  }, [baseMap]);
 
 
   // 地図クリック: 地点を追加するだけ（経路計算はしない）
   const handleMapClick = (e: any) => {
+    if (isMatching) return;
     const { lng, lat } = e.lngLat;
-    const newPoints = [...mapPoints, [lng, lat] as [number, number]];
-    setMapPoints(newPoints);
-
-    // 2点以上あれば、確認用の直線（プレビュー）を表示
-    if (newPoints.length >= 2) {
-      setState(p => ({
-        ...p,
-        routeGeometry: {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: newPoints
-          }
-        }
-      }));
-    }
+    setMapPoints(prev => [...prev, [lng, lat]]);
   };
+
+
 
   // ボタン押下: マップマッチング実行
   const handleRouteMatch = async () => {
-    if (mapPoints.length < 2) return alert("2点以上指定してください");
+    if (mapPoints.length < 2) {
+      showErrorModal("地点不足", "ルート探索には少なくとも2つの地点（Start/End）が必要です。地図上をクリックして地点を追加してください。");
+      return;
+    }
 
     setIsMatching(true);
-    console.log("Requesting map match for points:", mapPoints);
-
     try {
+      console.log("Requesting map match for points:", mapPoints);
       const res = await axios.post('http://localhost:8000/map-match', mapPoints);
       console.log("Map match response:", res.data);
 
-      if (res.data?.geometry) {
-        // Valhallaの結果（マッチング済みのLineString）で上書き
-        setState(p => ({ ...p, routeGeometry: { type: 'Feature', geometry: res.data.geometry } }));
-      } else if (res.data?.fallback) {
-        // フォールバック時
-        console.warn("Map match fallback used.");
-        alert(res.data?.properties?.matched === false ? "ルート探索に失敗したため、直線で表示します。(Valhalla Error)" : "ルートが見つかりませんでした");
+      if (res.data && res.data.geometry) {
+        setState(p => ({ ...p, routeGeometry: res.data }));
+
+        if (res.data.properties?.fallback) {
+          console.warn("Map match fallback used.");
+          showErrorModal("ルート探索失敗", "ルート探索に失敗したため、直線で表示します。(Valhalla Error)");
+        }
+      } else {
+        console.warn("No geometry in response");
+        showErrorModal("ルート探索失敗", "ルートが見つかりませんでした");
       }
     } catch (error: any) {
       console.error("Match error", error);
-      const errMsg = error.response?.data?.detail || "通信エラーが発生しました";
-      alert(`マップマッチング失敗: ${errMsg}`);
+      if (error.response && error.response.status === 404) {
+        showErrorModal("データが見つかりません", "指定されたルート方向に対応するデータが見つかりませんでした。\nルートの向き（Start/End）がデータの進行方向と一致しているか確認してください。");
+      } else {
+        const errMsg = error.response?.data?.detail || "通信エラーが発生しました";
+        showErrorModal("マップマッチング失敗", errMsg);
+      }
     } finally {
       setIsMatching(false);
     }
@@ -370,7 +372,10 @@ export default function App() {
   };
 
   const handleAnalyze = async (legend: LegendItem[]) => {
-    if (state.probeFiles.length === 0) return alert("Please select files.");
+    if (state.probeFiles.length === 0) {
+      showErrorModal("ファイル未選択", "分析対象のファイルを選択してください。");
+      return;
+    }
     setState(p => ({ ...p, isAnalyzing: true }));
     try {
       const res = await axios.post('http://localhost:8000/analyze', {
@@ -378,13 +383,19 @@ export default function App() {
         start_date: state.dateRange.start, end_date: state.dateRange.end,
         start_time: state.timeRange.start, end_time: state.timeRange.end,
         time_pitch: state.pitch, route_geometry: state.routeGeometry?.geometry,
-        speed_legend: legend
+        speed_legend: legend, direction: state.direction
       });
       if (res.data?.results) {
         setState(p => ({ ...p, analysisResult: { htmlUrl: `http://localhost:8000${res.data.results.html_url}` } }));
         setActiveTab('result');
       }
-    } catch (e: any) { alert(`Error: ${e.response?.data?.detail}`); }
+    } catch (e: any) {
+      if (e.response && e.response.status === 404) {
+        showErrorModal("データが見つかりません", "指定されたルート方向に対応するデータが見つかりませんでした。\nルートの向き（Start/End）がデータの進行方向と一致しているか確認してください。");
+      } else {
+        showErrorModal("分析エラー", `Error: ${e.response?.data?.detail || e.message}`);
+      }
+    }
     finally { setState(p => ({ ...p, isAnalyzing: false })); }
   };
 
@@ -400,15 +411,18 @@ export default function App() {
             const { lat, lon } = res.data[0];
             setViewState(p => ({ ...p, latitude: parseFloat(lat), longitude: parseFloat(lon), zoom: 13 }));
         } else {
-            alert("場所が見つかりませんでした");
+            showErrorModal("検索結果なし", TEXTS[lang].noResult);
         }
     } catch (e) {
         console.error("Search failed", e);
+        showErrorModal("検索エラー", "場所の検索に失敗しました。");
     }
   };
 
   return (
     <div className="flex w-screen h-screen bg-gray-50 font-sans overflow-hidden">
+      <MessageModal isOpen={showSuccess} onClose={() => setShowSuccess(false)} title={t.uploadSuccessTitle} message={t.uploadSuccessMsg} />
+      <MessageModal isOpen={showError} onClose={() => setShowError(false)} title={errorTitle} message={errorMsg} isError={true} />
       <aside className="w-16 flex-shrink-0 bg-[#1e1e24] text-white flex flex-col items-center py-6 shadow-2xl z-20">
         <div className="mb-8 p-2 bg-blue-600 rounded-xl shadow-lg shadow-blue-900/50 text-white"><LayoutDashboard size={24} /></div>
         <nav className="flex-1 space-y-4 w-full flex flex-col items-center px-2">
@@ -417,7 +431,14 @@ export default function App() {
         </nav>
         <div className="pb-4"><button onClick={() => setLang(l => l==='en'?'ja':'en')} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-white transition-colors font-bold text-xs rounded-full hover:bg-white/10"><Globe size={18}/></button></div>
       </aside>
-      <ControlPanel state={state} setState={setState} onAnalyze={handleAnalyze} lang={lang} />
+      <ControlPanel
+        state={state}
+        setState={setState}
+        onAnalyze={handleAnalyze}
+        lang={lang}
+        onError={showErrorModal}
+        onSuccess={() => setShowSuccess(true)}
+      />
       <main className="flex-1 relative bg-[#f3f4f6] flex flex-col overflow-hidden">
         <header className="h-14 bg-white border-b border-gray-200 px-6 flex items-center justify-end flex-shrink-0 z-10 shadow-sm">
           <form onSubmit={handleSearch} className="flex items-center gap-4">
@@ -430,10 +451,7 @@ export default function App() {
             <div className="w-full h-full relative">
               <div className="absolute top-4 right-4 z-10 flex gap-2">
                 <div className="bg-white/95 backdrop-blur shadow-md border border-gray-200 p-1 rounded-lg flex text-xs">
-                  <button onClick={() => {
-                    if (!MAPTILER_KEY) alert("MapTiler API Key is missing in .env");
-                    setBaseMap('osm');
-                  }} className={`px-3 py-1.5 rounded-md font-medium transition-colors ${baseMap==='osm'?'bg-blue-600 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}>OSM</button>
+                  <button onClick={() => setBaseMap('osm')} className={`px-3 py-1.5 rounded-md font-medium transition-colors ${baseMap==='osm'?'bg-blue-600 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}>OSM</button>
                   <button onClick={() => setBaseMap('gsi')} className={`px-3 py-1.5 rounded-md font-medium transition-colors ${baseMap==='gsi'?'bg-blue-600 text-white shadow-sm':'text-gray-600 hover:bg-gray-100'}`}>地理院地図</button>
                 </div>
 
@@ -450,13 +468,19 @@ export default function App() {
                     <button onClick={handleResetRoute} className="bg-white/95 backdrop-blur px-4 py-1.5 rounded-lg shadow-md border border-gray-200 text-xs font-bold text-red-500 hover:bg-red-50 transition-colors">{t.resetRoute}</button>
                 </div>
               </div>
-              {mapStyleData && (
-                <Map {...viewState} onMove={e => setViewState(e.viewState)} style={{ width: '100%', height: '100%' }} mapStyle={mapStyleData} mapLib={maplibregl} onClick={handleMapClick} cursor={mapPoints.length < 2 ? 'crosshair' : 'grab'}>
-                  <NavigationControl position="bottom-right" />
-                  {state.routeGeometry && <Source id="route" type="geojson" data={state.routeGeometry}><Layer id="route-bg" type="line" paint={{ 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.8 }} /><Layer id="route-fg" type="line" paint={{ 'line-color': '#3b82f6', 'line-width': 5, 'line-opacity': 0.9 }} /></Source>}
-                  {mapPoints.map((p, i) => (<Marker key={i} longitude={p[0]} latitude={p[1]} anchor="bottom"><div className="relative group cursor-pointer"><MapPin size={36} className={`drop-shadow-md ${i===0?"text-emerald-500":i===mapPoints.length-1?"text-rose-500":"text-blue-500"}`} fill="white" /><span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg whitespace-nowrap z-50">{i===0?"Start":i===mapPoints.length-1?"End":`Via ${i}`}</span></div></Marker>))}
-                </Map>
-              )}
+              <Map
+                {...viewState}
+                onMove={evt => setViewState(evt.viewState)}
+                style={{ width: '100%', height: '100%' }}
+                mapStyle={mapStyleData || { version: 8, sources: {}, layers: [] }}
+                mapLib={maplibregl}
+                onClick={handleMapClick}
+                cursor={isMatching ? 'wait' : 'crosshair'}
+              >
+                <NavigationControl position="bottom-right" />
+                {state.routeGeometry && <Source id="route" type="geojson" data={state.routeGeometry}><Layer id="route-bg" type="line" paint={{ 'line-color': '#ffffff', 'line-width': 8, 'line-opacity': 0.8 }} /><Layer id="route-fg" type="line" paint={{ 'line-color': '#3b82f6', 'line-width': 5, 'line-opacity': 0.9 }} /></Source>}
+                {mapPoints.map((p, i) => (<Marker key={i} longitude={p[0]} latitude={p[1]} anchor="bottom"><div className="relative group cursor-pointer"><MapPin size={36} className={`drop-shadow-md ${i===0?"text-emerald-500":i===mapPoints.length-1?"text-rose-500":"text-blue-500"}`} fill="white" /><span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-2 py-1 rounded text-[10px] font-bold shadow-lg whitespace-nowrap z-50">{i===0?"Start":i===mapPoints.length-1?"End":`Via ${i}`}</span></div></Marker>))}
+              </Map>
             </div>
           )}
           {activeTab === 'result' && (

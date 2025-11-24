@@ -4,11 +4,16 @@ import requests
 import time
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional
+from typing import List, Optional, Dict
 from fastapi import FastAPI, HTTPException, UploadFile, File, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+import re
+from dotenv import load_dotenv
+
+# .envファイルの読み込み
+load_dotenv()
 
 # ロジックモジュールのインポート
 from logic import run_mosaic_analysis
@@ -51,8 +56,9 @@ class AnalysisRequest(BaseModel):
     start_time: str
     end_time: str
     time_pitch: int
-    route_geometry: Optional[dict] = None
-    speed_legend: Optional[List[LegendItem]] = None
+    route_geometry: Optional[Dict] = None
+    speed_legend: Optional[List[Dict]] = None
+    direction: str = "LtoR"
 
 # --- Helper Functions ---
 
@@ -272,10 +278,15 @@ async def analyze(req: AnalysisRequest):
             req.dict()
         )
 
+        if result is None:
+            raise HTTPException(status_code=404, detail="No valid data found matching the route direction.")
+
         elapsed = time.time() - start_time
         print(f"[API] Analysis completed in {elapsed:.2f}s")
         return {"status": "success", "results": result}
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"[API Error] Analysis failed: {e}")
         import traceback
@@ -288,3 +299,115 @@ def get_result_file(filename: str):
     if os.path.exists(path):
         return FileResponse(path)
     raise HTTPException(status_code=404, detail="File not found")
+
+# --- Map Style Proxy & Caching ---
+
+STYLE_CACHE = {}
+MAPTILER_KEY = os.getenv("MAPTILER_KEY", "")
+
+def hex_to_gray(hex_str: str) -> str:
+    """#RRGGBB をグレースケール #XXXXXX に変換"""
+    hex_str = hex_str.lstrip('#')
+    if len(hex_str) == 3:
+        hex_str = "".join([c*2 for c in hex_str])
+
+    if len(hex_str) != 6:
+        return "#808080"
+
+    r = int(hex_str[0:2], 16)
+    g = int(hex_str[2:4], 16)
+    b = int(hex_str[4:6], 16)
+
+    # 輝度計算
+    y = int(0.299 * r + 0.587 * g + 0.114 * b)
+    gray = f"{y:02x}"
+    return f"#{gray}{gray}{gray}"
+
+def convert_style_to_gray(style_json: dict) -> dict:
+    """スタイルJSON内の色定義をグレースケールに置換"""
+    style_str = json.dumps(style_json)
+
+    # 正規表現でカラーコードを検出して置換
+    # #RRGGBB または #RGB
+    def replacer(match):
+        color = match.group(0) # "#RRGGBB" (with quotes)
+        raw_hex = color.strip('"')
+        return f'"{hex_to_gray(raw_hex)}"'
+
+    # 単純なカラーコード置換
+    # 注意: 文字列中のカラーコードらしきものも置換してしまうが、スタイル定義上は概ね問題ない
+    new_style_str = re.sub(r'"#(?:[0-9a-fA-F]{3}){1,2}"', replacer, style_str)
+
+    return json.loads(new_style_str)
+
+@app.get("/map-style/{style_type}")
+def get_map_style(style_type: str):
+    """
+    地図スタイルをプロキシ取得し、グレースケール化して返す。
+    style_type: 'osm' | 'gsi'
+    """
+    if style_type in STYLE_CACHE:
+        return STYLE_CACHE[style_type]
+
+    url = ""
+    needs_gray_conversion = False
+
+    if style_type == "osm":
+        # MIERUNE Gray (MapTiler)
+        # 既にグレーだが、APIキー隠蔽のためにプロキシする
+        # もしカラー版を使うなら needs_gray_conversion = True にする
+        if not MAPTILER_KEY:
+            # キーがない場合はエラーを返すか、フォールバックする
+            print("[API Warning] MAPTILER_KEY is not set.")
+            raise HTTPException(status_code=500, detail="MapTiler API Key is missing on server.")
+
+        url = f"https://api.maptiler.com/maps/jp-mierune-gray/style.json?key={MAPTILER_KEY}"
+        # MIERUNE Grayは元々グレーなので変換不要だが、
+        # 完全に彩度を落としたい場合は True にしてもよい
+        needs_gray_conversion = False
+
+    elif style_type == "gsi":
+        # 地理院地図 淡色
+        url = "https://gsi-cyberjapan.github.io/gsivectortile-mapbox-gl-js/pale.json"
+        needs_gray_conversion = True
+
+    else:
+        raise HTTPException(status_code=400, detail="Unknown style type")
+
+    try:
+        # ログ出力時にAPIキーを隠蔽
+        safe_url = re.sub(r'key=[^&]+', 'key=***', url)
+        print(f"[API] Fetching map style: {safe_url}")
+
+        resp = requests.get(url, timeout=10)
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail="Failed to fetch upstream map style")
+
+        data = resp.json()
+
+        if needs_gray_conversion:
+            data = convert_style_to_gray(data)
+
+        # キャッシュに保存
+        STYLE_CACHE[style_type] = data
+        return data
+
+    except Exception as e:
+        print(f"[API Error] Map style fetch failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/debug/inspect-geojson")
+def debug_inspect_geojson():
+    import glob
+    files = glob.glob(os.path.join(INPUT_DIR, "*.geojson"))
+    if not files:
+        return {"error": "No geojson files found"}
+
+    try:
+        with open(files[0], 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            if 'features' in data and len(data['features']) > 0:
+                return data['features'][0].get('properties', {})
+        return {"error": "No features found"}
+    except Exception as e:
+        return {"error": str(e)}
