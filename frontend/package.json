@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "axios": "^1.13.2",
+    "axios": "^1.13.5",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.554.0",
     "maplibre-gl": "^5.13.0",
